@@ -6,8 +6,8 @@
 
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-dsh-1b88ee)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](./package.json)
-[![Changelog](https://img.shields.io/badge/changelog-0.2.0-informational.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](./package.json)
+[![Changelog](https://img.shields.io/badge/changelog-0.3.0-informational.svg)](./CHANGELOG.md)
 
 一个原生 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）Web 插件：
 把你的**微信读书**书架、划线笔记、阅读统计搬进 dsh 界面，并用 dsh 内置模型生成 **AI 阅读总结与画像**。
