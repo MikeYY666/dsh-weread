@@ -303,3 +303,43 @@ export interface AiError {
   readonly code: string
   readonly message: string
 }
+
+/** One dated personal note for 今日 / 回顾. */
+export interface JournalNote {
+  /** Stable across pages; includes the book and note kind. */
+  readonly id: string
+  readonly kind: 'highlight' | 'thought'
+  readonly bookId: string
+  readonly bookTitle: string
+  readonly author: string
+  readonly cover: string
+  readonly chapterTitle: string
+  readonly text: string
+  /** Finite, positive epoch milliseconds; undated notes are omitted. */
+  readonly createTime: number
+}
+
+/** Account-scoped persistent journal; stale notes stay visible during host sync. */
+export interface JournalCacheState {
+  readonly notes: readonly JournalNote[]
+  readonly totalBooks: number
+  readonly scannedBooks: number
+  readonly failedBooks: number
+  readonly syncing: boolean
+  /** Epoch milliseconds of the last complete successful sync; 0 before success. */
+  readonly updatedAt: number
+  readonly error: string
+  readonly hasCache: boolean
+}
+
+/** A page scans up to six notebook books, using a book-offset cursor. */
+export interface JournalPage {
+  /** Carry on subsequent requests to keep notebook offsets stable for 30 minutes. */
+  readonly snapshot?: string
+  readonly notes: readonly JournalNote[]
+  readonly totalBooks: number
+  readonly nextCursor: number | null
+  /** Books with failed upstream operations; successful notes remain available. */
+  readonly failedBooks: number
+  readonly scannedBooks: number
+}

@@ -7,12 +7,15 @@
  * @module dsh-weread/src/host/routes
  */
 
+import { createHash } from 'node:crypto'
 import type { Logger, PluginContext } from '../cordis.js'
 import type { RouteDef } from './index.js'
 import type { Envelope } from '../types.js'
 import type { Cache } from './store/cache.js'
+import { createJournalCache, createJournalFileStorage } from './store/journalCache.js'
 import { callAgent, validateKey, WereadError } from './weread/gateway.js'
 import { fetchAllNotebooks } from './weread/paginate.js'
+import { fetchAllMineReviews, fetchJournalPage, journalBooks, parseJournalCursor } from './weread/journal.js'
 import {
   groupHighlightsByChapter,
   parseBookDetail,
@@ -26,7 +29,7 @@ import {
   parseShelfBook,
   parseShelfSync,
 } from './weread/parse.js'
-import { getAuthStatus, getSettings, readConfig, setApiKey, setShelfMode, maskKey } from './config.js'
+import { configPath, getAuthStatus, getSettings, readConfig, setApiKey, setShelfMode, maskKey } from './config.js'
 import { handleAiRoute } from './ai/handler.js'
 
 /** Dependencies every route handler receives. */
@@ -106,6 +109,21 @@ function query(request: Request, name: string): string | undefined {
  */
 export function createRouter(deps: RouteDeps): RouterEntry[] {
   const { logger, cache, scope } = deps
+  // The gateway reads credentials at invocation time. Check on every request so
+  // a settings change cannot mix another account's notes into an existing sync.
+  const ensureAccount = (apiKey: string) => {
+    if (readConfig().apiKey !== apiKey) throw new WereadError('weread/account-changed', '账号已更换，请重新同步', 409)
+  }
+  const accountCall = (apiKey: string) => (api: string, params: Record<string, unknown>) => {
+    ensureAccount(apiKey)
+    return callAgent(api, params, AbortSignal.timeout(30_000))
+  }
+  const journalCache = createJournalCache({
+    storage: createJournalFileStorage(configPath()),
+    assertAccount: ensureAccount,
+    fetchBooks: async (apiKey) => journalBooks(await fetchAllNotebooks(undefined, accountCall(apiKey))),
+    fetchPage: (books, cursor, apiKey) => fetchJournalPage(books, cursor, accountCall(apiKey)),
+  })
 
   /** Register one exact GET route. */
   function get(path: string, handler: (request: Request) => Promise<Response>): RouterEntry {
@@ -165,6 +183,61 @@ export function createRouter(deps: RouteDeps): RouterEntry[] {
         return ok(value)
       } catch (error) {
         return toResponse(error, logger, 'bookshelf')
+      }
+    }),
+  )
+
+  // Shared by 今日 / 回顾. The host owns synchronization independently of the
+  // browser's cancellation; polling only reads progress and never starts twins.
+  routes.push({
+    def: {
+      path: '/api/weread/journal-cache',
+      methods: ['GET', 'POST'],
+      requestBody: 'buffered',
+      fetch: async (request) => {
+        try {
+          const { apiKey } = readConfig()
+          if (apiKey === '') throw new WereadError('weread/no-key', '未配置微信读书 API Key', 401)
+          return ok(await journalCache.get(apiKey, request.method === 'POST'))
+        } catch (error) {
+          return toResponse(error, logger, 'journal-cache')
+        }
+      },
+    },
+  })
+
+  // ── Journal: offsets walk the complete upstream notebook order ────────
+  routes.push(
+    get('/api/weread/journal-notes', async (request) => {
+      try {
+        const cursors = new URL(request.url).searchParams.getAll('cursor')
+        if (cursors.length > 1) throw new WereadError('weread/bad-request', 'cursor 参数不能重复', 400)
+        const cursor = parseJournalCursor(cursors[0] ?? null)
+        const snapshots = new URL(request.url).searchParams.getAll('snapshot')
+        if (snapshots.length > 1 || (snapshots[0] !== undefined && !/^[a-f0-9]{32}$/.test(snapshots[0]))) {
+          throw new WereadError('weread/bad-request', 'snapshot 参数无效', 400)
+        }
+        let snapshot = snapshots[0]
+        let books: Array<Record<string, unknown>>
+        if (snapshot !== undefined) {
+          books = await cache.get(`weread:journal:snapshot:${snapshot}`, 30 * 60_000, async () => {
+            throw new WereadError('weread/journal-snapshot-expired', '笔记列表快照已过期，请从第一页重新加载', 409)
+          })
+        } else {
+          books = journalBooks(await cache.get('weread:journal:notebooks:raw', 5 * 60_000, () => fetchAllNotebooks()))
+          snapshot = createHash('sha256').update(JSON.stringify(books)).digest('hex').slice(0, 32)
+          books = await cache.get(`weread:journal:snapshot:${snapshot}`, 30 * 60_000, async () => books)
+        }
+        const key = `weread:journal:page:${snapshot}:${cursor}`
+        // Shared producers outlive the first browser request; its abort signal
+        // must not cancel work that another tab is already waiting for.
+        const value = await cache.get(key, 5 * 60_000, async () => ({ ...await fetchJournalPage(books, cursor), snapshot }))
+        // Incomplete results remain useful to this caller, but the next visit
+        // must be able to retry the failed sources immediately.
+        if (value.failedBooks > 0) cache.invalidate(key)
+        return ok(value)
+      } catch (error) {
+        return toResponse(error, logger, 'journal-notes')
       }
     }),
   )
@@ -276,9 +349,8 @@ export function createRouter(deps: RouteDeps): RouterEntry[] {
     get('/api/weread/reviews', async (request) => {
       try {
         const bookId = requireBookId(request)
-        const value = await cache.get(`weread:reviews:${bookId}`, 10 * 60_000, async () => {
-          const raw = await callAgent('/review/list/mine', { bookid: bookId, synckey: 0 }, request.signal)
-          return parseReviews(raw)
+        const value = await cache.get(`weread:reviews:dto:all:${bookId}`, 10 * 60_000, async () => {
+          return parseReviews(await fetchAllMineReviews(bookId))
         })
         return ok(value)
       } catch (error) {
