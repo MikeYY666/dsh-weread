@@ -16,6 +16,7 @@ import type {
   Envelope,
   JournalPage,
   JournalCacheState,
+  JournalNoteLink,
   PopularHighlight,
   PublicReview,
   ReadingStats,
@@ -164,6 +165,11 @@ export function fetchStats(mode: ReadingStatsMode, signal?: AbortSignal, baseTim
 export function fetchJournalPage(cursor: number, signal?: AbortSignal, snapshot?: string): Promise<JournalPage> {
   const query = snapshot === undefined ? '' : `&snapshot=${encodeURIComponent(snapshot)}`
   return getJson<JournalPage>(`/journal-notes?cursor=${encodeURIComponent(String(cursor))}${query}`, signal)
+}
+
+/** Resolve a legacy cached highlight's original location only when clicked. */
+export function fetchJournalNoteLink(bookId: string, noteId: string, signal?: AbortSignal): Promise<JournalNoteLink> {
+  return getJson<JournalNoteLink>(`/journal-note-link?bookId=${encodeURIComponent(bookId)}&noteId=${encodeURIComponent(noteId)}`, signal)
 }
 
 /** Read cached notes; the host starts at most one automatic sync per day. */

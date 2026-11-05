@@ -315,8 +315,16 @@ export interface JournalNote {
   readonly cover: string
   readonly chapterTitle: string
   readonly text: string
+  /** Exact app location when the upstream highlight includes a valid position. */
+  readonly sourceUrl?: string
   /** Finite, positive epoch milliseconds; undated notes are omitted. */
   readonly createTime: number
+}
+
+/** Resolved original location, or the book when the position is unavailable. */
+export interface JournalNoteLink {
+  readonly url: string
+  readonly precise: boolean
 }
 
 /** Account-scoped persistent journal; stale notes stay visible during host sync. */
