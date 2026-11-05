@@ -7,6 +7,8 @@
 import type { JournalNote, JournalNoteLink, JournalPage } from '../../types.js'
 import { callAgent, WereadError } from './gateway.js'
 import { parseReviews } from './parse.js'
+import { buildJournalNoteLink } from '../../readingLinks.js'
+export { buildJournalNoteLink } from '../../readingLinks.js'
 
 const PAGE_SIZE = 6
 const MAX_REVIEW_PAGES = 100
@@ -20,27 +22,6 @@ const object = (value: unknown): Raw => value !== null && typeof value === 'obje
 const rows = (value: unknown): unknown[] => Array.isArray(value) ? value : []
 const text = (value: unknown): string => typeof value === 'string' ? value : ''
 const id = (value: unknown): string => typeof value === 'string' ? value : typeof value === 'number' && Number.isFinite(value) ? String(value) : ''
-
-/** Numeric upstream IDs may be strings; reject coercions, fractions and unsafe values. */
-function positionInteger(value: unknown): string | undefined {
-  if (typeof value !== 'number' && typeof value !== 'string') return undefined
-  const raw = String(value)
-  return /^\d+$/.test(raw) && Number.isSafeInteger(Number(raw)) ? raw : undefined
-}
-
-/** Only documented chapterUid/range fields can identify a highlight's location. */
-export function buildJournalNoteLink(bookId: string | number, highlight: unknown): JournalNoteLink {
-  const book = id(bookId)
-  const fallback = { url: `weread://reading?bId=${encodeURIComponent(book)}`, precise: false }
-  const h = object(highlight)
-  const chapter = positionInteger(h.chapterUid)
-  const range = typeof h.range === 'string' ? /^(\d+)-(\d+)$/.exec(h.range) : null
-  if (book === '' || chapter === undefined || range === null) return fallback
-  const start = positionInteger(range[1])
-  const end = positionInteger(range[2])
-  if (start === undefined || end === undefined || Number(end) <= Number(start)) return fallback
-  return { url: `weread://bestbookmark?bookId=${encodeURIComponent(book)}&chapterUid=${encodeURIComponent(chapter)}&rangeStart=${encodeURIComponent(start)}&rangeEnd=${encodeURIComponent(end)}`, precise: true }
-}
 
 /** Validate the complete source-scoped journal ID before any cache/upstream access. */
 export function journalHighlightId(bookId: string, noteId: string): string {

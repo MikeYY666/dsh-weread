@@ -367,7 +367,7 @@ export function createRouter(deps: RouteDeps): RouterEntry[] {
         const bookId = requireBookId(request)
         const value = await cache.get(`weread:highlights:${bookId}`, 10 * 60_000, async () => {
           const raw = await callAgent('/book/bookmarklist', { bookId }, request.signal)
-          return groupHighlightsByChapter(parseHighlights(raw))
+          return groupHighlightsByChapter(parseHighlights(raw, bookId))
         })
         return ok(value)
       } catch (error) {
@@ -396,7 +396,7 @@ export function createRouter(deps: RouteDeps): RouterEntry[] {
         const bookId = requireBookId(request)
         const value = await cache.get(`weread:popular:${bookId}`, 24 * 60 * 60_000, async () => {
           const raw = await callAgent('/book/bestbookmarks', { bookId, chapterUid: 0 }, request.signal)
-          return parsePopularHighlights(raw)
+          return parsePopularHighlights(raw, bookId)
         })
         return ok(value)
       } catch (error) {

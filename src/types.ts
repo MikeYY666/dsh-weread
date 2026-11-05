@@ -86,6 +86,8 @@ export interface Chapter {
 
 /** One of the user's highlights. */
 export interface Highlight {
+  /** Precise original location, only when upstream position fields are valid. */
+  readonly sourceUrl?: string
   readonly bookmarkId: string
   readonly chapterUid: number
   readonly chapterTitle: string
@@ -123,6 +125,8 @@ export interface Review {
 
 /** A popular (community) highlight. */
 export interface PopularHighlight {
+  /** Precise original location, only when upstream position fields are valid. */
+  readonly sourceUrl?: string
   readonly bookmarkId: string
   readonly chapterUid: number
   readonly chapterTitle: string

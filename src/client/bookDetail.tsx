@@ -14,6 +14,7 @@ import {
   fetchPublicReviews,
   fetchReviews,
 } from './api.js'
+import { bookReadingUrl } from '../readingLinks.js'
 import { AiPanel } from './aiPanel.js'
 import { compactNumber, date, durationShort, percent, wordCount } from './format.js'
 import type {
@@ -68,8 +69,18 @@ function ErrorNote({ message }: { message: string }): ReactNode {
   return <div className="weread-error">{message}</div>
 }
 
+/** Keep native reading links keyboard-accessible without turning the whole row into a button. */
+function HighlightReadingLink({ bookId, sourceUrl, children, className = 'weread-hl-text-link' }: {
+  bookId: string; sourceUrl?: string; children?: ReactNode; className?: string
+}): ReactNode {
+  const precise = typeof sourceUrl === 'string' && sourceUrl.startsWith('weread://bestbookmark?')
+  return <a className={className} href={precise ? sourceUrl : bookReadingUrl(bookId)} title={precise ? '在微信读书中定位这条划线' : '缺少划线位置信息，在微信读书中打开本书'}>
+    {children ?? (precise ? '回到原文 ↗' : '打开书籍 ↗')}
+  </a>
+}
+
 /** 划线: highlights grouped by chapter. */
-function HighlightsTab({ resource }: { resource: Resource<ChapterHighlights[]> }): ReactNode {
+function HighlightsTab({ resource, bookId }: { resource: Resource<ChapterHighlights[]>; bookId: string }): ReactNode {
   if (resource.status === 'loading') return <Loading>加载划线与笔记…</Loading>
   if (resource.status === 'error') return <ErrorNote message={resource.error ?? '加载失败'} />
   const groups = resource.data ?? []
@@ -81,12 +92,13 @@ function HighlightsTab({ resource }: { resource: Resource<ChapterHighlights[]> }
           <h3 className="weread-hl-chapter">{group.chapterTitle}</h3>
           {group.highlights.map((hl) => (
             <blockquote key={hl.bookmarkId} className={`weread-hl-item weread-hl-color-${hl.colorStyle}`}>
-              <p className="weread-hl-text">{hl.markText}</p>
+              <p className="weread-hl-text"><HighlightReadingLink bookId={bookId} sourceUrl={hl.sourceUrl}>{hl.markText}</HighlightReadingLink></p>
               {hl.reviewContent !== undefined && hl.reviewContent !== '' ? (
                 <p className="weread-hl-note">💭 {hl.reviewContent}</p>
               ) : null}
               <footer className="weread-hl-foot">
                 <span>{date(hl.createTime)}</span>
+                <HighlightReadingLink bookId={bookId} sourceUrl={hl.sourceUrl} className="weread-hl-open" />
                 {hl.popularCount !== undefined && hl.popularCount > 0 ? (
                   <span className="weread-hl-pop">🔥 {compactNumber(hl.popularCount)}</span>
                 ) : null}
@@ -122,7 +134,7 @@ function ReviewsTab({ resource }: { resource: Resource<Review[]> }): ReactNode {
 }
 
 /** 热门划线: community highlights with their highlight counts. */
-function PopularTab({ resource }: { resource: Resource<PopularHighlight[]> }): ReactNode {
+function PopularTab({ resource, bookId }: { resource: Resource<PopularHighlight[]>; bookId: string }): ReactNode {
   if (resource.status === 'loading') return <Loading>加载热门划线…</Loading>
   if (resource.status === 'error') return <ErrorNote message={resource.error ?? '加载失败'} />
   const items = resource.data ?? []
@@ -131,9 +143,10 @@ function PopularTab({ resource }: { resource: Resource<PopularHighlight[]> }): R
     <div className="weread-popular">
       {items.map((item) => (
         <blockquote key={item.bookmarkId} className="weread-popular-item">
-          <p className="weread-hl-text">{item.markText}</p>
+          <p className="weread-hl-text"><HighlightReadingLink bookId={bookId} sourceUrl={item.sourceUrl}>{item.markText}</HighlightReadingLink></p>
           <footer className="weread-hl-foot">
             <span className="weread-popular-chapter">{item.chapterTitle}</span>
+            <HighlightReadingLink bookId={bookId} sourceUrl={item.sourceUrl} className="weread-hl-open" />
             <span className="weread-hl-pop">🔥 {compactNumber(item.totalCount)} 人划线</span>
           </footer>
         </blockquote>
@@ -257,9 +270,12 @@ export function BookDetailView({ bookId, onBack }: BookDetailViewProps): ReactNo
         <button type="button" className="weread-back" onClick={onBack} aria-label="返回书架">
           ← 返回
         </button>
-        <button type="button" className="weread-icon-btn" onClick={reload} title="重新加载" aria-label="重新加载">
-          ⟳
-        </button>
+        <div className="weread-detail-actions">
+          <a className="weread-detail-read" href={bookReadingUrl(bookId)} aria-label={meta ? `在微信读书阅读《${meta.title}》` : '在微信读书打开本书'}>去阅读 ↗</a>
+          <button type="button" className="weread-icon-btn" onClick={reload} title="重新加载" aria-label="重新加载">
+            ⟳
+          </button>
+        </div>
       </div>
 
       {book.status === 'loading' ? (
@@ -311,9 +327,9 @@ export function BookDetailView({ bookId, onBack }: BookDetailViewProps): ReactNo
       </nav>
 
       <div className="weread-tabpanel" role="tabpanel">
-        {tab === 'highlights' ? <HighlightsTab resource={highlights} /> : null}
+        {tab === 'highlights' ? <HighlightsTab resource={highlights} bookId={bookId} /> : null}
         {tab === 'reviews' ? <ReviewsTab resource={reviews} /> : null}
-        {tab === 'popular' ? <PopularTab resource={popular} /> : null}
+        {tab === 'popular' ? <PopularTab resource={popular} bookId={bookId} /> : null}
         {tab === 'public' ? <PublicTab resource={publicReviews} /> : null}
         {tab === 'ai' ? <AiTab bookId={bookId} /> : null}
       </div>

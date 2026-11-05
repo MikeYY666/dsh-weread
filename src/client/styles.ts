@@ -11,7 +11,7 @@
 import css from './styles.css'
 
 /** Style tag identity: one per plugin artifact. */
-const TAG_ID = 'dsh-weread/styles.css?v=11'
+const TAG_ID = 'dsh-weread/styles.css?v=12'
 
 /**
  * Adopt the bundle's stylesheet into the document, idempotently.

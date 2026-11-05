@@ -452,6 +452,14 @@
 
 /* ---------- book detail ---------- */
 
+.weread-detail-actions { display: flex; align-items: center; gap: 8px; }
+.weread-detail-read { display: inline-flex; align-items: center; padding: 7px 12px; border-radius: var(--weread-radius-sm); background: var(--weread-brand); color: #fff; font: inherit; font-size: 13px; text-decoration: none; white-space: nowrap; }
+.weread-detail-read:hover { filter: brightness(.94); }
+.weread-detail .weread-hl-text-link { color: inherit; font: inherit; text-decoration: none; }
+.weread-detail .weread-hl-text-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.weread-hl-open { color: var(--weread-brand); white-space: nowrap; }
+.weread-detail-read:focus-visible, .weread-hl-text-link:focus-visible, .weread-hl-open:focus-visible { outline: 2px solid var(--weread-brand); outline-offset: 3px; }
+
 .weread-detail-topbar {
   display: flex;
   align-items: center;
@@ -634,6 +642,7 @@
 
 .weread-hl-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;

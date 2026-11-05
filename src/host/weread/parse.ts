@@ -8,6 +8,8 @@
  * @module dsh-weread/src/host/weread/parse
  */
 
+import { buildJournalNoteLink } from '../../readingLinks.js'
+
 import type {
   BookDetail,
   BookProgress,
@@ -203,8 +205,15 @@ export function parseChapters(raw: unknown): Chapter[] {
     .sort((a, b) => a.chapterIdx - b.chapterIdx)
 }
 
+/** Never attach a position from a row that belongs to a different book. */
+function highlightSourceUrl(highlight: Record<string, unknown>, bookId?: string): string | undefined {
+  if (bookId === undefined || (highlight.bookId !== undefined && str(highlight.bookId) !== bookId)) return undefined
+  const link = buildJournalNoteLink(bookId, highlight)
+  return link.precise ? link.url : undefined
+}
+
 /** Parse `/book/bookmarklist` into flat highlights keyed by chapterUid. */
-export function parseHighlights(raw: unknown): HighlightWrap[] {
+export function parseHighlights(raw: unknown, bookId?: string): HighlightWrap[] {
   const root = (raw ?? {}) as Record<string, unknown>
   const updated = Array.isArray(root.updated) ? (root.updated as Record<string, unknown>[]) : []
   const chapters = Array.isArray(root.chapters) ? (root.chapters as Record<string, unknown>[]) : []
@@ -219,8 +228,10 @@ export function parseHighlights(raw: unknown): HighlightWrap[] {
     .map((h) => {
       const uid = num(h.chapterUid)
       const markText = str(h.markText)
+      const sourceUrl = highlightSourceUrl(h, bookId)
       return {
         bookmarkId: str(h.bookmarkId).replace(/[_~]/g, '-'),
+        ...(sourceUrl === undefined ? {} : { sourceUrl }),
         chapterUid: uid,
         chapterTitle: titleByUid.get(uid) ?? str(h.chapterName) ?? '未知章节',
         markText,
@@ -287,7 +298,7 @@ export function parseReviews(raw: unknown): Review[] {
 }
 
 /** Parse `/book/bestbookmarks` into popular highlights. */
-export function parsePopularHighlights(raw: unknown): PopularHighlight[] {
+export function parsePopularHighlights(raw: unknown, bookId?: string): PopularHighlight[] {
   const root = (raw ?? {}) as Record<string, unknown>
   const items = Array.isArray(root.items) ? (root.items as Record<string, unknown>[]) : []
   const chapters = Array.isArray(root.chapters) ? (root.chapters as Record<string, unknown>[]) : []
@@ -296,8 +307,10 @@ export function parsePopularHighlights(raw: unknown): PopularHighlight[] {
   return items
     .map((item) => {
       const uid = num(item.chapterUid)
+      const sourceUrl = highlightSourceUrl(item, bookId)
       return {
         bookmarkId: str(item.bookmarkId).replace(/[_~]/g, '-'),
+        ...(sourceUrl === undefined ? {} : { sourceUrl }),
         chapterUid: uid,
         chapterTitle: titleByUid.get(uid) ?? '未知章节',
         markText: str(item.markText),

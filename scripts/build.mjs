@@ -279,6 +279,21 @@ async function once() {
     })
   }
 
+  // Host output keeps relative imports, so shared root modules need JS artifacts too.
+  const readingLinksEntry = join(PKG_DIR, 'src/readingLinks.ts')
+  if (existsSync(readingLinksEntry)) {
+    await build({
+      entryPoints: [readingLinksEntry],
+      outdir: out,
+      bundle: false,
+      format: 'esm',
+      platform: 'neutral',
+      target: 'es2022',
+      sourcemap: true,
+      logLevel: 'warning',
+    })
+  }
+
   const clientEntry = join(PKG_DIR, 'src/client/index.ts')
   if (existsSync(clientEntry)) {
     await writeClient(await build({ ...CLIENT_OPTIONS, entryPoints: [clientEntry] }))
