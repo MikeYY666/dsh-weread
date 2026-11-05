@@ -11,6 +11,7 @@
 import type {
   BookDetail,
   BookProgress,
+  BookshelfPayload,
   Chapter,
   ChapterHighlights,
   Highlight,
@@ -19,7 +20,9 @@ import type {
   ReadingStats,
   ReadingStatsMode,
   Review,
+  ShelfAlbum,
   ShelfBook,
+  ShelfFolder,
 } from '../../types.js'
 
 /** Coerce an unknown to a finite number, else 0. */
@@ -396,5 +399,104 @@ export function parseReadingStats(raw: unknown, mode: ReadingStatsMode): Reading
     preferCategoryWord: str(root.preferCategoryWord) || undefined,
     preferTimeWord: str(root.preferTimeWord) || undefined,
     preferPublisher,
+  }
+}
+
+// ── Book shelf (`/shelf/sync`) ────────────────────────────────────────────
+
+/**
+ * Build one shelf row from a `/shelf/sync` `books[]` entry.
+ *
+ * This payload is flat (no nested `book`) and carries different facts than the
+ * notebook list: `finishReading` instead of a percentage, `readUpdateTime`
+ * instead of `sort`, and no note/review counts at all. Progress is therefore
+ * binary here (finished → 100), and `/progress-batch` fills in the real numbers
+ * afterwards — exactly the fallback the notebook source already relies on.
+ */
+function parseSyncBook(raw: Record<string, unknown>): ShelfBook {
+  const finished = num(raw.finishReading) === 1
+  const lastRead = num(raw.readUpdateTime)
+  return {
+    bookId: str(raw.bookId),
+    title: str(raw.title),
+    author: str(raw.author).replace(/\[(.*?)\]/g, '【$1】'),
+    cover: hdCover(str(raw.cover)),
+    // The shelf payload has no per-book annotation counts, so the "有笔记"
+    // filter has nothing to match on in book-shelf mode.
+    noteCount: 0,
+    reviewCount: 0,
+    lastReadDate: lastRead > 0 ? lastRead * 1000 : 0,
+    isArticle: num(raw.type) === 3,
+    category: categoryOf(raw),
+    publishYear: 0,
+    progress: { progress: finished ? 100 : 0, readingTime: 0, isFinished: finished, finishTime: 0 },
+    isTop: num(raw.isTop) === 1,
+    secret: num(raw.secret) === 1,
+  }
+}
+
+/**
+ * Parse `/shelf/sync` `archive[]` into folders.
+ *
+ * Each entry is only `{ name, bookIds }`: there is no folder id upstream and
+ * names are user-editable (so not unique), and the position is the only stable
+ * handle — hence the synthesised `f<index>` id.
+ */
+function parseFolders(raw: unknown): ShelfFolder[] {
+  const list = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : []
+  return list.map((entry, index) => {
+    const ids = Array.isArray(entry.bookIds) ? entry.bookIds : []
+    return {
+      id: `f${index}`,
+      name: str(entry.name) || `书单 ${index + 1}`,
+      bookIds: ids.map((id) => str(id)).filter((id) => id !== ''),
+    }
+  })
+}
+
+/** Parse `/shelf/sync` `albums[]` (audiobooks/专辑) into display rows. */
+function parseAlbums(raw: unknown): ShelfAlbum[] {
+  const list = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : []
+  /** The payload carries no explicit order, so put recently-listened first. */
+  const listenedAt = (entry: Record<string, unknown>): number =>
+    num(((entry.albumInfoExtra ?? {}) as Record<string, unknown>).lectureReadUpdateTime)
+  return list
+    .slice()
+    .sort((a, b) => listenedAt(b) - listenedAt(a))
+    .map((entry) => {
+      const info = (entry.albumInfo ?? {}) as Record<string, unknown>
+      return {
+        albumId: str(info.albumId),
+        name: str(info.name),
+        author: str(info.authorName),
+        cover: hdCover(str(info.cover)),
+        trackCount: num(info.trackCount),
+        isFinished: num(info.finish) === 1,
+      }
+    })
+    .filter((album) => album.albumId !== '' || album.name !== '')
+}
+
+/**
+ * Parse the whole `/shelf/sync` payload into the book shelf the panel renders.
+ *
+ * Books inside a folder still appear in `books[]`, so the browser resolves a
+ * folder's contents by id without extra requests.
+ * @param raw - the gateway payload.
+ * @returns books, folders, albums, and whether the shelf has a 文章收藏 entry.
+ */
+export function parseShelfSync(raw: unknown): BookshelfPayload {
+  const root = (raw ?? {}) as Record<string, unknown>
+  const books = (Array.isArray(root.books) ? (root.books as Record<string, unknown>[]) : [])
+    .map(parseSyncBook)
+    .filter((book) => book.bookId !== '')
+  const mp = root.mp
+  const hasArticleCollection =
+    typeof mp === 'object' && mp !== null ? Object.keys(mp as Record<string, unknown>).length > 0 : Boolean(mp)
+  return {
+    books,
+    folders: parseFolders(root.archive),
+    albums: parseAlbums(root.albums),
+    hasArticleCollection,
   }
 }

@@ -6,8 +6,8 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { ApiError, fetchAuthStatus, saveApiKey } from './api.js'
-import type { AuthState, AuthStatus } from '../types.js'
+import { ApiError, fetchAuthStatus, fetchSettings, saveApiKey, saveSettings } from './api.js'
+import type { AuthState, AuthStatus, ShelfMode, WereadSettings } from '../types.js'
 
 /** Where the user can mint an API key. */
 const KEY_URL = 'https://weread.qq.com/api/skills/apikeyGet'
@@ -49,6 +49,9 @@ export function Settings(): ReactNode {
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveResult, setSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [settings, setSettings] = useState<WereadSettings | null>(null)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [savingMode, setSavingMode] = useState(false)
 
   const loadStatus = useCallback(async () => {
     setLoadError(null)
@@ -59,9 +62,32 @@ export function Settings(): ReactNode {
     }
   }, [])
 
+  const loadSettings = useCallback(async () => {
+    setSettingsError(null)
+    try {
+      setSettings(await fetchSettings())
+    } catch (caught) {
+      setSettingsError(caught instanceof ApiError ? caught.message : String(caught))
+    }
+  }, [])
+
   useEffect(() => {
     void loadStatus()
-  }, [loadStatus])
+    void loadSettings()
+  }, [loadStatus, loadSettings])
+
+  /** Persist the 书架 data-source switch; the host echoes the stored value. */
+  const chooseMode = useCallback(async (next: ShelfMode) => {
+    setSavingMode(true)
+    setSettingsError(null)
+    try {
+      setSettings(await saveSettings({ shelfMode: next }))
+    } catch (caught) {
+      setSettingsError(caught instanceof ApiError ? caught.message : String(caught))
+    } finally {
+      setSavingMode(false)
+    }
+  }, [])
 
   const save = useCallback(async () => {
     setSaving(true)
@@ -136,6 +162,36 @@ export function Settings(): ReactNode {
             微信读书 · 获取 API Key
           </a>{' '}
           生成后粘贴到上方。
+        </p>
+      </section>
+
+      <section className="weread-settings-section">
+        <h3 className="weread-section-title">书架数据源</h3>
+        {settingsError !== null ? <div className="weread-error">{settingsError}</div> : null}
+        <label className={`weread-switch${savingMode ? ' is-busy' : ''}`}>
+          <input
+            type="checkbox"
+            className="weread-switch-input"
+            checked={settings?.shelfMode === 'bookshelf'}
+            disabled={settings === null || savingMode}
+            onChange={(event) => void chooseMode(event.target.checked ? 'bookshelf' : 'notebooks')}
+          />
+          <span className="weread-switch-track" aria-hidden="true">
+            <span className="weread-switch-thumb" />
+          </span>
+          <span className="weread-switch-text">
+            <span className="weread-switch-title">使用微信读书书架接口（/shelf/sync）</span>
+            <span className="weread-switch-desc">
+              开启后书架显示你书架上的全部书籍、文件夹（书单）和有声书；关闭则用笔记接口（/user/notebooks），只列出有笔记的书。
+            </span>
+          </span>
+        </label>
+        <p className="weread-hint">
+          {settings === null
+            ? '读取书架设置…'
+            : settings.shelfMode === 'bookshelf'
+              ? '当前：书架模式（含文件夹）。切换后点面板右上角「⟳ 刷新」即可生效。'
+              : '当前：笔记模式。切换后点面板右上角「⟳ 刷新」即可生效。'}
         </p>
       </section>
 

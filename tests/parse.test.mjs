@@ -9,6 +9,7 @@ import {
   parseReadingStats,
   parseReviews,
   parseShelfBook,
+  parseShelfSync,
 } from '../lib/host/weread/parse.js'
 
 test('parseShelfBook maps a notebook entry', () => {
@@ -155,4 +156,62 @@ test('parseReadingStats extracts dashboard fields', () => {
   assert.equal(stats.compare, 0.2)
   assert.equal(stats.readTimes['1700000000000'], 600)
   assert.deepEqual(stats.yearReport[0].times, [1, 2, 3])
+})
+
+test('parseShelfSync splits books, folders, albums and the article entry', () => {
+  const raw = {
+    books: [
+      {
+        bookId: 'b1',
+        title: '三体',
+        author: '[刘慈欣]',
+        cover: 'https://x/s_1.jpg',
+        category: '科幻',
+        finishReading: 1,
+        readUpdateTime: 1700000000,
+        isTop: 1,
+        secret: 0,
+      },
+      { bookId: 'b2', title: '活着', finishReading: 0, readUpdateTime: 1600000000, secret: 1 },
+    ],
+    // Folder ids come back as numbers often enough that both must survive.
+    archive: [{ name: '读书会', bookIds: ['b1', 2] }],
+    albums: [
+      {
+        albumInfo: { albumId: 'a1', name: '专辑', authorName: '演播', trackCount: 12, finish: 1, cover: 'https://x/s_a.jpg' },
+        albumInfoExtra: { lectureReadUpdateTime: 10 },
+      },
+    ],
+    mp: { count: 3 },
+  }
+  const out = parseShelfSync(raw)
+  assert.equal(out.books.length, 2)
+  assert.equal(out.books[0].title, '三体')
+  // Bracketed authors are normalised for display.
+  assert.equal(out.books[0].author, '【刘慈欣】')
+  assert.equal(out.books[0].cover, 'https://x/t7_1.jpg')
+  // The shelf payload has no percentage: finishReading alone decides 100 or 0.
+  assert.equal(out.books[0].progress.progress, 100)
+  assert.equal(out.books[0].progress.isFinished, true)
+  assert.equal(out.books[1].progress.progress, 0)
+  assert.equal(out.books[0].isTop, true)
+  assert.equal(out.books[1].secret, true)
+  assert.equal(out.folders.length, 1)
+  assert.equal(out.folders[0].name, '读书会')
+  assert.deepEqual(out.folders[0].bookIds, ['b1', '2'])
+  assert.equal(out.albums.length, 1)
+  assert.equal(out.albums[0].trackCount, 12)
+  assert.equal(out.albums[0].isFinished, true)
+  assert.equal(out.hasArticleCollection, true)
+})
+
+test('parseShelfSync tolerates a shelf with no folders, albums or article entry', () => {
+  const out = parseShelfSync({ books: [{ bookId: 'b1', title: 'x' }], archive: [], albums: [], mp: {} })
+  assert.equal(out.books.length, 1)
+  assert.deepEqual(out.folders, [])
+  assert.deepEqual(out.albums, [])
+  assert.equal(out.hasArticleCollection, false)
+  // Absent counters are zeroed rather than undefined, so cards never crash.
+  assert.equal(out.books[0].noteCount, 0)
+  assert.equal(out.books[0].lastReadDate, 0)
 })

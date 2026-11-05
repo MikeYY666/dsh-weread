@@ -1,6 +1,6 @@
 {
   "name": "dsh-weread",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DeepSeek Harness (dsh) plugin: manage your WeChat Reading shelf, view highlights/notes, reading stats, and AI summaries powered by dsh's LLM.",
   "type": "module",
   "license": "MIT",
@@ -19,6 +19,8 @@
     "lib/**/*.d.ts",
     "cordis.patch.yml",
     "README.md",
+    "CHANGELOG.md",
+    "VERSION",
     "LICENSE"
   ],
   "engines": {

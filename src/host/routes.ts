@@ -24,8 +24,9 @@ import {
   parseReadingStats,
   parseReviews,
   parseShelfBook,
+  parseShelfSync,
 } from './weread/parse.js'
-import { getAuthStatus, readConfig, setApiKey, maskKey } from './config.js'
+import { getAuthStatus, getSettings, readConfig, setApiKey, setShelfMode, maskKey } from './config.js'
 import { handleAiRoute } from './ai/handler.js'
 
 /** Dependencies every route handler receives. */
@@ -151,6 +152,50 @@ export function createRouter(deps: RouteDeps): RouterEntry[] {
       }
     }),
   )
+
+  // The book-shelf source: everything on the WeChat-Reading shelf, plus the
+  // user's folders (`archive[]`) and audiobooks (`albums[]`). `/shelf/sync`
+  // returns the whole shelf in one response, so this needs no pagination.
+  routes.push(
+    get('/api/weread/bookshelf', async (request) => {
+      try {
+        const value = await cache.get('weread:bookshelf', 5 * 60_000, async () =>
+          parseShelfSync(await callAgent('/shelf/sync', {}, request.signal)),
+        )
+        return ok(value)
+      } catch (error) {
+        return toResponse(error, logger, 'bookshelf')
+      }
+    }),
+  )
+
+  // ── Settings (non-secret) ─────────────────────────────────────────────
+  // One route for both verbs: the connection's exact Fetch registry is keyed by
+  // path alone and throws when a second route claims the same path, so a GET and
+  // a POST must share one entry and branch on the method here.
+  routes.push({
+    def: {
+      path: '/api/weread/settings',
+      methods: ['GET', 'POST'],
+      requestBody: 'buffered',
+      fetch: async (request) => {
+        if (request.method === 'GET') return ok(getSettings())
+        try {
+          const body = (await request.json()) as { shelfMode?: unknown }
+          if (body.shelfMode !== 'notebooks' && body.shelfMode !== 'bookshelf') {
+            throw new WereadError('weread/bad-request', 'shelfMode 只能是 notebooks 或 bookshelf', 400)
+          }
+          const next = setShelfMode(body.shelfMode)
+          // Both list caches belong to the mode that just changed.
+          cache.invalidate('weread:shelf')
+          cache.invalidate('weread:bookshelf')
+          return ok(next)
+        } catch (error) {
+          return toResponse(error, logger, 'settings')
+        }
+      },
+    },
+  })
 
   // Batch per-book progress for the shelf cards. The notebook list carries no
   // reliable progress, so the client asks for the visible books in chunks after

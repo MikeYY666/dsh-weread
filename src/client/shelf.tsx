@@ -6,9 +6,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ApiError, fetchProgressBatch, fetchShelf } from './api.js'
-import { compactNumber, date, percent } from './format.js'
-import type { ShelfBook } from '../types.js'
+import { ApiError, fetchProgressBatch, fetchShelf, fetchSettings } from './api.js'
+import { BookCard } from './bookCard.js'
+import { Bookshelf } from './bookshelf.js'
+import type { ShelfBook, ShelfMode } from '../types.js'
 import { readYearOf } from './readyear.js'
 
 /** How many book ids ride one `/progress-batch` request. */
@@ -129,47 +130,13 @@ function compareBooks(a: ShelfBook, b: ShelfBook, sort: ShelfSort): number {
   }
 }
 
-/** One book card. */
-function BookCard({ book, onOpen }: { book: ShelfBook; onOpen: () => void }): ReactNode {
-  const pct = Math.min(100, Math.max(0, book.progress.progress))
-  const noted = book.noteCount > 0 || book.reviewCount > 0
-  return (
-    <button type="button" className="weread-card" onClick={onOpen} title={book.title}>
-      <div className="weread-card-cover">
-        {book.cover !== '' ? (
-          <img src={book.cover} alt="" loading="lazy" className="weread-cover-img" />
-        ) : (
-          <span className="weread-cover-fallback">{book.title.slice(0, 1)}</span>
-        )}
-        {noted ? <span className="weread-card-badge">{compactNumber(book.noteCount + book.reviewCount)}</span> : null}
-      </div>
-      <div className="weread-card-body">
-        <span className="weread-card-title" title={book.title}>
-          {book.title}
-        </span>
-        <span className="weread-card-author" title={book.author}>
-          {book.author || '未知作者'}
-        </span>
-        <div className="weread-progress" aria-label={`阅读进度 ${percent(pct)}`}>
-          <span className="weread-progress-fill" style={{ width: `${pct}%` }} />
-        </div>
-        <span className="weread-card-meta">
-          {book.progress.isFinished ? '已读完' : pct > 0 ? percent(pct) : '未开始'}
-          <span className="weread-card-dot">·</span>
-          {date(book.lastReadDate)}
-        </span>
-      </div>
-    </button>
-  )
-}
-
 /**
  * The shelf grid with its toolbar.
  *
  * Fetches once on mount; the toolbar filters and sorts the in-memory list so the
  * controls stay instant and the network stays quiet.
  */
-export function Shelf({ onOpenBook }: ShelfProps): ReactNode {
+function NotebookShelf({ onOpenBook }: ShelfProps): ReactNode {
   const [books, setBooks] = useState<ShelfBook[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -334,4 +301,43 @@ export function Shelf({ onOpenBook }: ShelfProps): ReactNode {
       )}
     </div>
   )
+}
+
+/**
+ * The 书架 tab.
+ *
+ * The shelf has two possible upstream sources, chosen in the settings panel:
+ * the notebook list (note-oriented, the historical default) and the WeChat
+ * Reading book shelf (`/shelf/sync`, which also carries folders and albums).
+ * The choice is read once on mount, so switching it in settings takes effect on
+ * the next panel refresh rather than mid-render.
+ */
+export function Shelf({ onOpenBook }: ShelfProps): ReactNode {
+  const [mode, setMode] = useState<ShelfMode | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    fetchSettings()
+      .then((settings) => {
+        if (alive) setMode(settings.shelfMode)
+      })
+      // A failed settings read must not strand the panel: fall back to the same
+      // default the host uses, which is the book shelf.
+      .catch(() => {
+        if (alive) setMode('bookshelf')
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  if (mode === null) {
+    return (
+      <div className="weread-state">
+        <span className="weread-spinner" aria-hidden="true" />
+        <p>加载书架中…</p>
+      </div>
+    )
+  }
+  return mode === 'bookshelf' ? <Bookshelf onOpenBook={onOpenBook} /> : <NotebookShelf onOpenBook={onOpenBook} />
 }

@@ -11,6 +11,7 @@ import type {
   AuthStatus,
   BookDetail,
   BookProgress,
+  BookshelfPayload,
   ChapterHighlights,
   Envelope,
   PopularHighlight,
@@ -19,6 +20,8 @@ import type {
   ReadingStatsMode,
   Review,
   ShelfBook,
+  ShelfMode,
+  WereadSettings,
 } from '../types.js'
 
 /** Base path every JSON route shares. */
@@ -81,6 +84,33 @@ export async function saveApiKey(apiKey: string): Promise<AuthStatus> {
 /** GET `/shelf`. */
 export function fetchShelf(signal?: AbortSignal): Promise<ShelfBook[]> {
   return getJson<ShelfBook[]>('/shelf', signal)
+}
+
+/** GET `/bookshelf` — the book-shelf source, folders and albums included. */
+export function fetchBookshelf(signal?: AbortSignal): Promise<BookshelfPayload> {
+  return getJson<BookshelfPayload>('/bookshelf', signal)
+}
+
+/** GET `/settings`. */
+export function fetchSettings(signal?: AbortSignal): Promise<WereadSettings> {
+  return getJson<WereadSettings>('/settings', signal)
+}
+
+/** POST `/settings`; returns the settings the host stored. */
+export async function saveSettings(patch: { shelfMode: ShelfMode }): Promise<WereadSettings> {
+  const response = await fetch(`${BASE}/settings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  let body: Envelope<WereadSettings>
+  try {
+    body = (await response.json()) as Envelope<WereadSettings>
+  } catch {
+    throw new ApiError('weread/bad-response', `接口返回了非 JSON 响应（HTTP ${response.status}）`)
+  }
+  if (!body.ok) throw new ApiError(body.error.code, body.error.message)
+  return body.value
 }
 
 /**
