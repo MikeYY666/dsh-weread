@@ -14,6 +14,8 @@ import type {
   BookshelfPayload,
   ChapterHighlights,
   Envelope,
+  JournalPage,
+  JournalCacheState,
   PopularHighlight,
   PublicReview,
   ReadingStats,
@@ -77,6 +79,7 @@ export async function saveApiKey(apiKey: string): Promise<AuthStatus> {
   } catch {
     throw new ApiError('weread/bad-response', `接口返回了非 JSON 响应（HTTP ${response.status}）`)
   }
+  window.dispatchEvent(new Event('weread:credentials-changed'))
   if (!body.ok) throw new ApiError(body.error.code, body.error.message)
   return body.value
 }
@@ -151,9 +154,29 @@ export function fetchPublicReviews(bookId: string, signal?: AbortSignal): Promis
   return getJson<PublicReview[]>(`/public-reviews?bookId=${encodeURIComponent(bookId)}`, signal)
 }
 
-/** GET `/stats` for one period. */
-export function fetchStats(mode: ReadingStatsMode, signal?: AbortSignal): Promise<ReadingStats> {
-  return getJson<ReadingStats>(`/stats?mode=${encodeURIComponent(mode)}`, signal)
+/** GET `/stats`; baseTime is epoch seconds and leaves the signal argument intact. */
+export function fetchStats(mode: ReadingStatsMode, signal?: AbortSignal, baseTime?: number): Promise<ReadingStats> {
+  const query = baseTime === undefined ? '' : `&baseTime=${encodeURIComponent(String(baseTime))}`
+  return getJson<ReadingStats>(`/stats?mode=${encodeURIComponent(mode)}${query}`, signal)
+}
+
+/** GET one page from a stable notebook snapshot; the first request omits it. */
+export function fetchJournalPage(cursor: number, signal?: AbortSignal, snapshot?: string): Promise<JournalPage> {
+  const query = snapshot === undefined ? '' : `&snapshot=${encodeURIComponent(snapshot)}`
+  return getJson<JournalPage>(`/journal-notes?cursor=${encodeURIComponent(String(cursor))}${query}`, signal)
+}
+
+/** Read cached notes; the host starts at most one automatic sync per day. */
+export function fetchJournalCache(signal?: AbortSignal): Promise<JournalCacheState> {
+  return getJson<JournalCacheState>('/journal-cache', signal)
+}
+
+/** Explicit synchronization keeps the previous cache visible. */
+export async function refreshJournalCache(signal?: AbortSignal): Promise<JournalCacheState> {
+  const response = await fetch(`${BASE}/journal-cache`, { method: 'POST', signal })
+  const body = await response.json() as Envelope<JournalCacheState>
+  if (!body.ok) throw new ApiError(body.error.code, body.error.message)
+  return body.value
 }
 
 /** GET `/heatmap` — a `YYYY-MM-DD → seconds` map for the last `months` months. */

@@ -58,7 +58,11 @@ export function createCache(): Cache {
 
       const task = produce()
         .then((value) => {
-          touch(key, { value, expiresAt: Date.now() + ttlMs })
+          // Invalidating a key also revokes an older producer's right to cache.
+          // This matters when credentials change while upstream work is in flight.
+          if (inflight.get(key) === task) {
+            touch(key, { value, expiresAt: Date.now() + ttlMs })
+          }
           return value
         })
         .finally(() => {
