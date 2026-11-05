@@ -10,7 +10,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { AuthStatus } from '../types.js'
+import type { AuthStatus, ShelfMode, WereadSettings } from '../types.js'
 
 /** Persisted config shape. */
 export interface WereadConfig {
@@ -22,9 +22,23 @@ export interface WereadConfig {
   aiProvider?: string
   /** Optional model override for AI calls. */
   aiModel?: string
+  /** Which upstream list the 书架 tab reads; absent means `notebooks`. */
+  shelfMode?: ShelfMode
 }
 
 const EMPTY: WereadConfig = { apiKey: '' }
+
+/**
+ * Which source the 书架 tab uses when the setting has never been changed.
+ * The book shelf is the real shelf (folders and audiobooks included), so it is
+ * the default; the notebook list stays available as the opt-out.
+ */
+const DEFAULT_SHELF_MODE: ShelfMode = 'bookshelf'
+
+/** Validate a stored/requested mode, falling back to the default source. */
+function shelfModeOf(value: unknown): ShelfMode {
+  return value === 'bookshelf' || value === 'notebooks' ? value : DEFAULT_SHELF_MODE
+}
 
 /** `$DSH_HOME`, else `~/.dsh`. */
 function dshHome(): string {
@@ -44,12 +58,14 @@ export function readConfig(): WereadConfig {
   if (!existsSync(path)) return { ...EMPTY }
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<WereadConfig>
-    return {
-      apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
-      proxy: typeof parsed.proxy === 'string' && parsed.proxy !== '' ? parsed.proxy : undefined,
-      aiProvider: typeof parsed.aiProvider === 'string' && parsed.aiProvider !== '' ? parsed.aiProvider : undefined,
-      aiModel: typeof parsed.aiModel === 'string' && parsed.aiModel !== '' ? parsed.aiModel : undefined,
-    }
+    // Optional keys are attached only when the file actually carries them, so a
+    // read never invents fields the on-disk file does not have.
+    const config: WereadConfig = { apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '' }
+    if (typeof parsed.proxy === 'string' && parsed.proxy !== '') config.proxy = parsed.proxy
+    if (typeof parsed.aiProvider === 'string' && parsed.aiProvider !== '') config.aiProvider = parsed.aiProvider
+    if (typeof parsed.aiModel === 'string' && parsed.aiModel !== '') config.aiModel = parsed.aiModel
+    if (parsed.shelfMode === 'bookshelf' || parsed.shelfMode === 'notebooks') config.shelfMode = parsed.shelfMode
+    return config
   } catch {
     return { ...EMPTY }
   }
@@ -87,4 +103,18 @@ export function setApiKey(apiKey: string): AuthStatus {
   config.apiKey = apiKey.trim()
   writeConfig(config)
   return apiKey.trim() === '' ? { state: 'unset' } : { state: 'unknown', masked: maskKey(apiKey.trim()) }
+}
+
+/** The non-secret settings the panel exposes. */
+export function getSettings(): WereadSettings {
+  return { shelfMode: readConfig().shelfMode ?? DEFAULT_SHELF_MODE }
+}
+
+/** Persist the 书架 data-source switch and return the stored value. */
+export function setShelfMode(mode: ShelfMode): WereadSettings {
+  const config = readConfig()
+  const next = shelfModeOf(mode)
+  config.shelfMode = next
+  writeConfig(config)
+  return { shelfMode: next }
 }

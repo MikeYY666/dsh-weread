@@ -41,6 +41,13 @@ export interface ShelfBook {
   /** Publication year parsed from `publishTime`, or 0 when unknown. */
   readonly publishYear: number
   readonly progress: BookProgress
+  /**
+   * True when the user pinned this book (`isTop` in `/shelf/sync`). Only the
+   * book-shelf source carries it; the notebook source leaves it undefined.
+   */
+  readonly isTop?: boolean
+  /** True for a 私密阅读 book (`secret` in `/shelf/sync`). */
+  readonly secret?: boolean
 }
 
 /** Book metadata for the detail header. */
@@ -209,6 +216,61 @@ export interface ReadingStats {
   readonly preferTimeWord?: string
   /** Top publishers by books read. */
   readonly preferPublisher: readonly { readonly name: string; readonly count: number }[]
+}
+
+// ── Shelf sources (`/shelf/sync` vs `/user/notebooks`) ────────────────────
+
+/**
+ * Which upstream list feeds the 书架 tab.
+ *
+ * - `notebooks` — `/user/notebooks`, the note-oriented list; carries note and
+ *   review counts, but has no folders and only books the user ever annotated.
+ * - `bookshelf` — `/shelf/sync`, the real WeChat-Reading shelf: every book on
+ *   the shelf, plus the user's folders (书单) and audiobooks (专辑).
+ */
+export type ShelfMode = 'notebooks' | 'bookshelf'
+
+/**
+ * One user folder from `/shelf/sync` `archive[]`.
+ *
+ * WeRead returns only a name and the contained book ids, so `id` is synthesised
+ * from the entry's position — names are user-editable and not guaranteed unique.
+ */
+export interface ShelfFolder {
+  readonly id: string
+  readonly name: string
+  /** Book ids inside this folder, in the server's order. */
+  readonly bookIds: readonly string[]
+}
+
+/** One audiobook / 专辑 from `/shelf/sync` `albums[]`. */
+export interface ShelfAlbum {
+  readonly albumId: string
+  readonly name: string
+  /** Narrator / author. */
+  readonly author: string
+  readonly cover: string
+  readonly trackCount: number
+  readonly isFinished: boolean
+}
+
+/**
+ * `/api/weread/bookshelf`: the book-shelf source, folders and albums included.
+ *
+ * `books` is the shelf's own book array; a book that sits in a folder still
+ * appears here, so the browser can resolve folder contents without extra calls.
+ */
+export interface BookshelfPayload {
+  readonly books: readonly ShelfBook[]
+  readonly folders: readonly ShelfFolder[]
+  readonly albums: readonly ShelfAlbum[]
+  /** `mp` is present, i.e. the shelf shows a 文章收藏 entry. */
+  readonly hasArticleCollection: boolean
+}
+
+/** Persisted plugin settings the panel can change. */
+export interface WereadSettings {
+  readonly shelfMode: ShelfMode
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────

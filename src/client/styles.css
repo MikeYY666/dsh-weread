@@ -1695,3 +1695,247 @@
   color: var(--weread-text);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- book-shelf source (folders, breadcrumb, albums) ---------- */
+
+/* One titled block on the shelf root: folders, ungrouped books, audiobooks. */
+.weread-block {
+  margin-bottom: 22px;
+}
+
+.weread-block:last-child {
+  margin-bottom: 0;
+}
+
+/* A folder is drawn at book size: its books' covers tile the space a cover would
+   take, so folders and books can share one grid without a separate section. The
+   frame and the corner mark are what keep a folder from reading as a book. */
+.weread-folder-tile .weread-card-cover {
+  /* A tinted bed plus an inset ring: the mosaic's own gaps alone vanish when the
+     contained covers are light, which is the common case. */
+  background: color-mix(in srgb, var(--weread-brand) 6%, var(--weread-surface-2));
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--weread-brand) 16%, transparent),
+    0 2px 8px color-mix(in srgb, #000 12%, transparent);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.weread-folder-tile:hover .weread-card-cover {
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--weread-brand) 30%, transparent),
+    0 4px 14px color-mix(in srgb, #000 18%, transparent);
+}
+
+.weread-folder-tile:focus-visible .weread-card-cover {
+  box-shadow:
+    inset 0 0 0 2px var(--weread-brand),
+    0 0 0 2px var(--weread-brand);
+}
+
+/* Wider gutters than a plain grid: the tiling has to read as separate covers. */
+.weread-mosaic {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  gap: 3px;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
+.weread-mosaic[data-count="1"] {
+  grid-template-columns: 1fr;
+}
+
+.weread-mosaic[data-count="2"] {
+  grid-template-columns: 1fr 1fr;
+}
+
+.weread-mosaic[data-count="3"],
+.weread-mosaic[data-count="4"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.weread-mosaic-cell {
+  display: block;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--weread-surface);
+  /* Each tile keeps its own edge, so the collage never fuses into one picture. */
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--weread-text) 10%, transparent);
+}
+
+.weread-mosaic-cell .weread-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Folder mark: a dark pill in the opposite corner from the count badge. */
+.weread-folder-mark {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 16px;
+  border-radius: 5px;
+  background: color-mix(in srgb, #000 62%, transparent);
+  color: #fff;
+}
+
+/* The folder glyph takes the accent colour rather than the muted cover fallback. *//* The folder glyph takes the accent colour rather than the muted cover fallback. */
+.weread-folder-tile .weread-cover-fallback {
+  color: var(--weread-brand);
+}
+
+/* Folder page header: back affordance, the current path, and the count. */
+.weread-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--weread-muted);
+}
+
+.weread-breadcrumb-sep {
+  opacity: 0.5;
+}
+
+.weread-breadcrumb-current {
+  font-weight: 600;
+  color: var(--weread-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Audiobooks are display-only: their ids live in a different space than books. */
+.weread-album {
+  display: flex;
+  flex-direction: column;
+  cursor: default;
+}
+
+.weread-album-tag {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #000 58%, transparent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Pinned / private markers on a book cover. */
+.weread-card-pin,
+.weread-card-lock {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #000 58%, transparent);
+  color: #fff;
+  font-size: 10px;
+}
+
+.weread-card-lock {
+  top: auto;
+  bottom: 6px;
+}
+
+/* ---------- settings switch ---------- */
+
+.weread-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--weread-border);
+  border-radius: var(--weread-radius);
+  background: var(--weread-surface-2);
+  cursor: pointer;
+}
+
+.weread-switch.is-busy {
+  opacity: 0.65;
+  cursor: progress;
+}
+
+/* The native input stays in the accessibility tree but is not drawn. */
+.weread-switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.weread-switch-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: var(--weread-track);
+  transition: background 160ms ease;
+}
+
+.weread-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px color-mix(in srgb, #000 28%, transparent);
+  transition: transform 160ms ease;
+}
+
+.weread-switch-input:checked + .weread-switch-track {
+  background: var(--weread-brand);
+}
+
+.weread-switch-input:checked + .weread-switch-track .weread-switch-thumb {
+  transform: translateX(16px);
+}
+
+.weread-switch-input:focus-visible + .weread-switch-track {
+  outline: 2px solid var(--weread-brand);
+  outline-offset: 2px;
+}
+
+.weread-switch-input:disabled + .weread-switch-track {
+  opacity: 0.6;
+}
+
+.weread-switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.weread-switch-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--weread-text);
+}
+
+.weread-switch-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--weread-muted);
+}
