@@ -2032,26 +2032,27 @@
 .weread-journal-filter-buttons { display: flex; gap: 6px; }
 .weread-journal-search { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--weread-muted); }
 .weread-journal-search input { width: 180px; max-width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid var(--weread-border); border-radius: 7px; padding: 8px 10px; color: var(--weread-text); background: var(--weread-surface); font: inherit; }
-.weread-journal-retro-grid { display: grid; grid-template-columns: minmax(245px, .8fr) minmax(0, 1.3fr); gap: 30px; align-items: start; }
-.weread-journal-calendar { padding: 18px; border: 1px solid var(--weread-border); border-radius: 12px; min-width: 0; }
-.weread-journal-month { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 18px; }
-.weread-journal-month h2 { font-size: 14px; }
-.weread-journal-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
-.weread-journal-weekday { padding: 5px 0 10px; text-align: center; color: var(--weread-muted); font-size: 11px; }
-.weread-journal-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 45px; padding: 4px 1px; border: 1px solid transparent; border-radius: 7px; color: var(--weread-text); background: none; font: inherit; font-size: 12px; cursor: pointer; }
+.weread-journal-retro-grid { display: grid; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.weread-journal-calendar { box-sizing: border-box; width: 100%; max-width: 260px; justify-self: start; padding: 12px; border: 1px solid var(--weread-border); border-radius: 10px; min-width: 0; }
+.weread-journal-month { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 10px; }
+.weread-journal-month h2 { font-size: 13px; }
+.weread-journal-calendar .weread-journal-button { padding: 5px 8px; font-size: 11px; }
+.weread-journal-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.weread-journal-weekday { padding: 3px 0 6px; text-align: center; color: var(--weread-muted); font-size: 11px; }
+.weread-journal-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 34px; padding: 2px 1px; border: 1px solid transparent; border-radius: 7px; color: var(--weread-text); background: none; font: inherit; font-size: 12px; cursor: pointer; }
 .weread-journal-day small { color: var(--weread-muted); font-size: 9px; }
 .weread-journal-day.has-notes { background: var(--weread-journal-paper); }
 .weread-journal-day[aria-current="date"] > span { text-decoration: underline; text-underline-offset: 4px; font-weight: 700; }
 .weread-journal-day[aria-pressed="true"] { border-color: var(--weread-text); }
 .weread-journal-day:hover:not(:disabled) { border-color: var(--weread-muted); }
 .weread-journal-day:disabled { opacity: .3; cursor: default; }
-.weread-journal-calendar > .weread-journal-button { margin: 12px 6px 0 0; }
-.weread-journal-month-jump { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; color: var(--weread-muted); font-size: 12px; }
-.weread-journal-month-jump input { box-sizing: border-box; max-width: 160px; min-width: 0; border: 1px solid var(--weread-border); border-radius: 6px; padding: 6px; background: var(--weread-surface); color: var(--weread-text); font: inherit; }
+.weread-journal-calendar > .weread-journal-button { margin: 8px 4px 0 0; }
+.weread-journal-month-jump { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; color: var(--weread-muted); font-size: 12px; }
+.weread-journal-month-jump input { box-sizing: border-box; max-width: 138px; min-width: 0; border: 1px solid var(--weread-border); border-radius: 6px; padding: 6px; background: var(--weread-surface); color: var(--weread-text); font: inherit; }
 .weread-journal-day-notes { margin-top: 0; }
 @media (max-width: 720px) {
   .weread-journal-retro-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
-  .weread-journal-calendar { max-width: 420px; width: 100%; box-sizing: border-box; margin-inline: auto; }
+  .weread-journal-calendar { max-width: 260px; margin-inline: 0; }
   .weread-journal-summary { gap: 14px; }
 }
 @media (max-width: 420px) {
