@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ApiError, fetchProgressBatch, fetchShelf } from './api.js'
 import { compactNumber, date, percent } from './format.js'
 import type { ShelfBook } from '../types.js'
+import { readYearOf } from './readyear.js'
 
 /** How many book ids ride one `/progress-batch` request. */
 const PROGRESS_CHUNK = 20
@@ -74,8 +75,8 @@ function sectionize(books: readonly ShelfBook[], group: ShelfGroup): ShelfSectio
     let label: string
     let sortKey: number
     if (group === 'year') {
-      // Group by the year the user last read the book, not its publication year.
-      const year = book.lastReadDate > 0 ? new Date(book.lastReadDate).getFullYear() : 0
+      // Year = finish year for finished books (accurate), else last-read year.
+      const year = readYearOf(book)
       key = `y:${year}`
       label = year > 0 ? `${year} 年` : '未知年份'
       sortKey = year === 0 ? -Infinity : -year // newest first; unknown last

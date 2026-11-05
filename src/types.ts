@@ -19,6 +19,8 @@ export interface BookProgress {
   /** Total reading time in seconds. */
   readonly readingTime: number
   readonly isFinished: boolean
+  /** When the book was finished, in ms epoch (0 when not finished / unknown). */
+  readonly finishTime: number
 }
 
 /** One row in the shelf grid. */

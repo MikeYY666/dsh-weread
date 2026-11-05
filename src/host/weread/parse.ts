@@ -60,8 +60,15 @@ export function parseProgress(raw: unknown): BookProgress {
   const book = (root.book ?? {}) as Record<string, unknown>
   const progress = num(book.progress)
   const readingTime = num(book.readingTime)
-  const isFinished = num(book.finishTime) > 0 || progress >= 100
-  return { progress, readingTime, isFinished }
+  const finishSeconds = num(book.finishTime)
+  const isFinished = finishSeconds > 0 || progress >= 100
+  return {
+    progress,
+    readingTime,
+    isFinished,
+    // finishTime arrives in seconds; convert to ms for the DTO.
+    finishTime: finishSeconds > 0 ? finishSeconds * 1000 : 0,
+  }
 }
 
 /** One raw notebook entry from `/user/notebooks` or `/shelf/sync`. */
@@ -132,7 +139,8 @@ export function parseShelfBook(raw: RawNotebook): ShelfBook {
     isArticle: num(book.type) === 3,
     category: categoryOf(book),
     publishYear: yearOf(book.publishTime),
-    progress: { progress: progressPct, readingTime: 0, isFinished: finished },
+    // finishTime is filled later from /progress-batch; unknown at list level.
+    progress: { progress: progressPct, readingTime: 0, isFinished: finished, finishTime: 0 },
   }
 }
 

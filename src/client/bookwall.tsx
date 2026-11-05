@@ -7,9 +7,13 @@
  * @module dsh-weread/client/bookwall
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ApiError, fetchShelf } from './api.js'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { ApiError, fetchProgressBatch, fetchShelf } from './api.js'
 import type { ShelfBook } from '../types.js'
+import { readYearOf, readTimeOf } from './readyear.js'
+
+/** How many book ids ride one `/progress-batch` request. */
+const PROGRESS_CHUNK = 20
 
 export interface BookWallProps {
   /** Open a book's detail view. */
@@ -31,8 +35,10 @@ interface MonthRow {
 function rowsForYear(books: readonly ShelfBook[], year: number): MonthRow[] {
   const byMonth: ShelfBook[][] = Array.from({ length: 12 }, () => [])
   for (const book of books) {
-    if (book.lastReadDate <= 0) continue
-    const d = new Date(book.lastReadDate)
+    // The month within the year comes from whichever timestamp the year uses.
+    const t = readTimeOf(book)
+    if (t <= 0) continue
+    const d = new Date(t)
     if (d.getFullYear() !== year) continue
     byMonth[d.getMonth()]!.push(book)
   }
@@ -43,7 +49,8 @@ function rowsForYear(books: readonly ShelfBook[], year: number): MonthRow[] {
 function yearsOf(books: readonly ShelfBook[]): number[] {
   const set = new Set<number>()
   for (const b of books) {
-    if (b.lastReadDate > 0) set.add(new Date(b.lastReadDate).getFullYear())
+    const y = readYearOf(b)
+    if (y > 0) set.add(y)
   }
   return [...set].sort((a, b) => b - a)
 }
@@ -52,7 +59,7 @@ function yearsOf(books: readonly ShelfBook[]): number[] {
 function countForYear(books: readonly ShelfBook[], year: number): number {
   let n = 0
   for (const b of books) {
-    if (b.lastReadDate > 0 && new Date(b.lastReadDate).getFullYear() === year) n += 1
+    if (readYearOf(b) === year) n += 1
   }
   return n
 }
@@ -81,6 +88,40 @@ export function BookWall({ onOpenBook, refreshKey = 0 }: BookWallProps): ReactNo
   const [year, setYear] = useState<number | null>(null)
   const years = useMemo(() => (books === null ? [] : yearsOf(books)), [books])
 
+  const aliveRef = useRef(true)
+  useEffect(() => {
+    aliveRef.current = true
+    return () => {
+      aliveRef.current = false
+    }
+  }, [])
+
+  /** Fill per-book progress (finishTime matters for the year) in the background. */
+  const fillProgress = useCallback(async (books: readonly ShelfBook[]) => {
+    const ids = books.map((b) => b.bookId)
+    for (let start = 0; start < ids.length; start += PROGRESS_CHUNK) {
+      const chunk = ids.slice(start, start + PROGRESS_CHUNK)
+      let map: Awaited<ReturnType<typeof fetchProgressBatch>>
+      try {
+        map = await fetchProgressBatch(chunk)
+      } catch {
+        continue
+      }
+      if (!aliveRef.current) return
+      let merged: ShelfBook[] | null = null
+      setBooks((prev) => {
+        if (prev === null) return prev
+        merged = prev.map((b) => (map[b.bookId] === undefined ? b : { ...b, progress: map[b.bookId]! }))
+        return merged
+      })
+      // Years can shift once finish times arrive, so re-pick the active year.
+      if (merged !== null) {
+        const ys = yearsOf(merged)
+        setYear((y) => (y !== null && ys.includes(y) ? y : (ys[0] ?? new Date().getFullYear())))
+      }
+    }
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -89,13 +130,14 @@ export function BookWall({ onOpenBook, refreshKey = 0 }: BookWallProps): ReactNo
       setBooks(rows)
       const ys = yearsOf(rows)
       setYear((prev) => (prev !== null && ys.includes(prev) ? prev : (ys[0] ?? new Date().getFullYear())))
+      void fillProgress(rows)
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : String(caught))
       setBooks([])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [fillProgress])
 
   useEffect(() => {
     void load()

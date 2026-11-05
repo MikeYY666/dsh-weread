@@ -26,7 +26,7 @@ test('parseShelfBook maps a notebook entry', () => {
   assert.equal(book.noteCount, 12)
   assert.equal(book.isArticle, false)
   assert.equal(book.publishYear, 2008)
-  assert.deepEqual(book.progress, { progress: 0, readingTime: 0, isFinished: false })
+  assert.deepEqual(book.progress, { progress: 0, readingTime: 0, isFinished: false, finishTime: 0 })
 })
 
 test('parseShelfBook reads readingProgress and categories', () => {
@@ -59,9 +59,14 @@ test('parseProgress derives finished and reads time', () => {
     progress: 100,
     readingTime: 3600,
     isFinished: true,
+    finishTime: 0,
   })
+  // finishTime (seconds) converts to ms and marks finished.
+  const fin = parseProgress({ book: { progress: 56, finishTime: 1700000000 } })
+  assert.equal(fin.isFinished, true)
+  assert.equal(fin.finishTime, 1700000000000)
   assert.equal(parseProgress({ book: { progress: 40 } }).isFinished, false)
-  assert.deepEqual(parseProgress(null), { progress: 0, readingTime: 0, isFinished: false })
+  assert.deepEqual(parseProgress(null), { progress: 0, readingTime: 0, isFinished: false, finishTime: 0 })
 })
 
 test('parseChapters accepts the V2 flat chapters shape and sorts by idx', () => {
