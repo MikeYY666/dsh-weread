@@ -4,9 +4,11 @@
  * ordinary reviews endpoint rejects incomplete results rather than hiding truncation.
  * @module dsh-weread/src/host/weread/journal
  */
-import type { JournalNote, JournalPage } from '../../types.js'
+import type { JournalNote, JournalNoteLink, JournalPage } from '../../types.js'
 import { callAgent, WereadError } from './gateway.js'
 import { parseReviews } from './parse.js'
+import { buildJournalNoteLink } from '../../readingLinks.js'
+export { buildJournalNoteLink } from '../../readingLinks.js'
 
 const PAGE_SIZE = 6
 const MAX_REVIEW_PAGES = 100
@@ -20,6 +22,26 @@ const object = (value: unknown): Raw => value !== null && typeof value === 'obje
 const rows = (value: unknown): unknown[] => Array.isArray(value) ? value : []
 const text = (value: unknown): string => typeof value === 'string' ? value : ''
 const id = (value: unknown): string => typeof value === 'string' ? value : typeof value === 'number' && Number.isFinite(value) ? String(value) : ''
+
+/** Validate the complete source-scoped journal ID before any cache/upstream access. */
+export function journalHighlightId(bookId: string, noteId: string): string {
+  const prefix = `${bookId}:highlight:`
+  const sourceId = noteId.startsWith(prefix) ? noteId.slice(prefix.length) : ''
+  if (!/^[A-Za-z0-9_-]+$/.test(bookId) || sourceId === '' || sourceId.length > 512 || /[:\s\x00-\x1f\x7f]/.test(sourceId)) {
+    throw new WereadError('weread/bad-request', 'bookId 或划线 noteId 无效', 400)
+  }
+  return sourceId
+}
+
+/** A deleted highlight is an explicit error; missing position alone permits fallback. */
+export function resolveJournalNoteLink(bookId: string, noteId: string, raw: unknown): JournalNoteLink {
+  const sourceId = journalHighlightId(bookId, noteId)
+  const highlight = rows(object(raw).updated).map(object).find((h) =>
+    (typeof h.bookmarkId === 'string' || typeof h.bookmarkId === 'number') && String(h.bookmarkId) === sourceId && h.type !== 0 && h.type !== '0' &&
+    (h.bookId === undefined || id(h.bookId) === bookId))
+  if (highlight === undefined) throw new WereadError('weread/note-not-found', '未找到这条划线，可能已被删除', 404)
+  return buildJournalNoteLink(bookId, highlight)
+}
 
 /** Strict nonnegative book offset; blank, exponent and fractional cursors are invalid. */
 export function parseJournalCursor(value: string | null): number {
@@ -101,17 +123,18 @@ export function parseJournalNotes(notebook: unknown, highlights: unknown, review
   const chapterTitles = new Map(rows(root.chapters).map((chapter) => { const c = object(chapter); return [id(c.chapterUid), text(c.title)] }))
   const notes: JournalNote[] = []
   const seen = new Set<string>()
-  function add(kind: JournalNote['kind'], sourceId: string, content: string, time: unknown, chapterTitle: string): void {
+  function add(kind: JournalNote['kind'], sourceId: string, content: string, time: unknown, chapterTitle: string, sourceUrl?: string): void {
     const createTime = milliseconds(time)
     const noteId = `${bookId}:${kind}:${sourceId}`
     if (sourceId === '' || content.trim() === '' || createTime === undefined || seen.has(noteId)) return
     seen.add(noteId)
-    notes.push({ ...metadata, id: noteId, kind, chapterTitle, text: content.trim(), createTime })
+    notes.push({ ...metadata, id: noteId, kind, chapterTitle, text: content.trim(), createTime, ...(sourceUrl === undefined ? {} : { sourceUrl }) })
   }
   for (const item of rows(root.updated)) {
     const h = object(item)
     if (h.type === 0 || h.type === '0') continue
-    add('highlight', id(h.bookmarkId), text(h.markText), h.createTime, chapterTitles.get(id(h.chapterUid)) || text(h.chapterName))
+    const link = buildJournalNoteLink(bookId, h)
+    add('highlight', id(h.bookmarkId), text(h.markText), h.createTime, chapterTitles.get(id(h.chapterUid)) || text(h.chapterName), link.precise ? link.url : undefined)
   }
   for (const item of rows(object(reviews).reviews)) {
     const wrapper = object(item)

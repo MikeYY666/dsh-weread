@@ -15,7 +15,7 @@ import type { Cache } from './store/cache.js'
 import { createJournalCache, createJournalFileStorage } from './store/journalCache.js'
 import { callAgent, validateKey, WereadError } from './weread/gateway.js'
 import { fetchAllNotebooks } from './weread/paginate.js'
-import { fetchAllMineReviews, fetchJournalPage, journalBooks, parseJournalCursor } from './weread/journal.js'
+import { fetchAllMineReviews, fetchJournalPage, journalBooks, journalHighlightId, parseJournalCursor, resolveJournalNoteLink } from './weread/journal.js'
 import {
   groupHighlightsByChapter,
   parseBookDetail,
@@ -37,6 +37,8 @@ export interface RouteDeps {
   readonly logger: Logger
   readonly cache: Cache
   readonly scope: PluginContext
+  /** Optional upstream seam for isolated original-location route tests. */
+  readonly journalLinkCall?: typeof callAgent
 }
 
 /** One registered route plus its path for logging. */
@@ -242,6 +244,35 @@ export function createRouter(deps: RouteDeps): RouterEntry[] {
     }),
   )
 
+  // Resolve old persisted notes lazily; never rescan the full journal for a link.
+  routes.push(
+    get('/api/weread/journal-note-link', async (request) => {
+      try {
+        const params = new URL(request.url).searchParams
+        if (params.getAll('bookId').length !== 1 || params.getAll('noteId').length !== 1) {
+          throw new WereadError('weread/bad-request', 'bookId 和 noteId 必须各提供一次', 400)
+        }
+        const bookId = params.get('bookId') ?? ''
+        const noteId = params.get('noteId') ?? ''
+        journalHighlightId(bookId, noteId)
+        const { apiKey } = readConfig()
+        if (apiKey === '') throw new WereadError('weread/no-key', '未配置微信读书 API Key', 401)
+        const account = createHash('sha256').update(apiKey).digest('hex')
+        // Raw bookmark payloads must never collide with parsed Highlight DTOs.
+        const raw = await cache.get(`weread:journal:links:${account}:${bookId}`, 24 * 60 * 60_000, async () => {
+          ensureAccount(apiKey)
+          const value = await (deps.journalLinkCall ?? callAgent)('/book/bookmarklist', { bookId }, AbortSignal.timeout(30_000))
+          ensureAccount(apiKey)
+          return value
+        })
+        ensureAccount(apiKey)
+        return ok(resolveJournalNoteLink(bookId, noteId, raw))
+      } catch (error) {
+        return toResponse(error, logger, 'journal-note-link')
+      }
+    }),
+  )
+
   // ── Settings (non-secret) ─────────────────────────────────────────────
   // One route for both verbs: the connection's exact Fetch registry is keyed by
   // path alone and throws when a second route claims the same path, so a GET and
@@ -336,7 +367,7 @@ export function createRouter(deps: RouteDeps): RouterEntry[] {
         const bookId = requireBookId(request)
         const value = await cache.get(`weread:highlights:${bookId}`, 10 * 60_000, async () => {
           const raw = await callAgent('/book/bookmarklist', { bookId }, request.signal)
-          return groupHighlightsByChapter(parseHighlights(raw))
+          return groupHighlightsByChapter(parseHighlights(raw, bookId))
         })
         return ok(value)
       } catch (error) {
@@ -365,7 +396,7 @@ export function createRouter(deps: RouteDeps): RouterEntry[] {
         const bookId = requireBookId(request)
         const value = await cache.get(`weread:popular:${bookId}`, 24 * 60 * 60_000, async () => {
           const raw = await callAgent('/book/bestbookmarks', { bookId, chapterUid: 0 }, request.signal)
-          return parsePopularHighlights(raw)
+          return parsePopularHighlights(raw, bookId)
         })
         return ok(value)
       } catch (error) {

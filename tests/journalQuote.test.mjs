@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { selectJournalQuote, selectJournalBookQuote } from '../src/client/journalQuote.ts'
+import { selectJournalQuote, selectJournalBookQuote, selectRandomJournalQuote } from '../src/client/journalQuote.ts'
 
 const a = { id: 'a', text: 'first' }
 const b = { id: 'b', text: 'second' }
@@ -54,4 +54,30 @@ test('change book preserves the quote if no alternative exists and handles empty
   assert.equal(selectJournalBookQuote(undefined, [], 3), undefined)
   assert.equal(selectJournalBookQuote(undefined, [current], 3), current)
   assert.equal(selectJournalBookQuote({ id: 'gone', bookId: 'removed' }, [current], 3), current)
+})
+
+test('same-day openings use fresh rolls for both book and quote selection', () => {
+  const first = { id: 'a1', bookId: 'A' }
+  const second = { id: 'a2', bookId: 'A' }
+  const other = { id: 'b1', bookId: 'B' }
+  const notes = [first, second, other]
+  assert.equal(selectRandomJournalQuote(notes, 0, 0), first)
+  assert.equal(selectRandomJournalQuote(notes, 0.8, 0), other)
+  assert.equal(selectRandomJournalQuote(notes, 0, 0.9), second)
+  assert.equal(selectJournalQuote(first, [...notes, { id: 'new', bookId: 'C' }], 999), first)
+})
+
+test('initial random selection weights books equally instead of note counts', () => {
+  const many = Array.from({ length: 100 }, (_, index) => ({ id: `a-${index}`, bookId: 'A' }))
+  const notes = [...many, { id: 'b', bookId: 'B' }, { id: 'c', bookId: 'C' }]
+  const selected = [0.1, 0.4, 0.8].map((roll) => selectRandomJournalQuote(notes, roll, 0.5).bookId)
+  assert.deepEqual(selected, ['A', 'B', 'C'])
+})
+
+test('random initial selection handles empty, single and upper-bound rolls', () => {
+  const only = { id: 'only', bookId: 'A' }
+  assert.equal(selectRandomJournalQuote([], 0, 0), undefined)
+  assert.equal(selectRandomJournalQuote([only], 0.99, 0.99), only)
+  const last = { id: 'last', bookId: 'B' }
+  assert.equal(selectRandomJournalQuote([only, last], 1, 1), last)
 })

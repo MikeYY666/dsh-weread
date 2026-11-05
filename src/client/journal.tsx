@@ -4,12 +4,12 @@
  * Calendar keys deliberately use browser-local dates rather than UTC slices.
  * @module dsh-weread/client/journal
  */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { fetchBookshelf, fetchJournalCache, refreshJournalCache, fetchStats } from './api.js'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { fetchBookshelf, fetchJournalCache, refreshJournalCache, fetchStats, fetchJournalNoteLink } from './api.js'
 import { duration } from './format.js'
 import { journalDayKey as dayKey, journalDaySeconds } from './journalDates.js'
-import { selectJournalQuote, selectJournalBookQuote } from './journalQuote.js'
-import type { BookshelfPayload, JournalNote, ReadingStats } from '../types.js'
+import { selectJournalQuote, selectJournalBookQuote, selectRandomJournalQuote } from './journalQuote.js'
+import type { BookshelfPayload, JournalNote, JournalNoteLink, ReadingStats } from '../types.js'
 
 type JournalProps = { onOpenBook: (bookId: string) => void; refreshKey?: string | number }
 type Filter = 'all' | 'highlight' | 'thought'
@@ -127,14 +127,53 @@ function NoteList({ notes, onOpenBook, empty }: { notes: readonly JournalNote[];
     {limit < notes.length ? <button type="button" className="weread-journal-button weread-journal-more" onClick={() => setLimit((value) => value + PAGE_SIZE)}>再看 {Math.min(PAGE_SIZE, notes.length - limit)} 条（剩余 {notes.length - limit} 条）</button> : null}
   </>
 }
+/** Legacy cache entries resolve only this book on click; switching quotes cancels handoff. */
+function QuotePassage({ note }: { note: JournalNote }): ReactNode {
+  const supplied = typeof note.sourceUrl === 'string' && note.sourceUrl.startsWith('weread://bestbookmark?') ? note.sourceUrl : undefined
+  const [resolved, setResolved] = useState<JournalNoteLink | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const request = useRef<AbortController | null>(null)
+  useEffect(() => () => request.current?.abort(), [])
+  const ready = supplied ? { url: supplied, precise: true } : resolved
+  const href = ready?.url ?? `weread://reading?bId=${encodeURIComponent(note.bookId)}`
+  const follow = async (event: { preventDefault(): void }) => {
+    if (ready) return
+    event.preventDefault()
+    if (loading) return
+    const controller = new AbortController()
+    request.current = controller
+    setLoading(true)
+    setError('')
+    try {
+      const link = await fetchJournalNoteLink(note.bookId, note.id, controller.signal)
+      if (controller.signal.aborted) return
+      if (!/^weread:\/\/(?:bestbookmark|reading)\?/.test(link.url)) throw new Error('原文链接格式无效')
+      setResolved(link)
+      window.location.assign(link.url)
+    } catch (error) {
+      if (!controller.signal.aborted) setError(message(error))
+    } finally {
+      if (!controller.signal.aborted) setLoading(false)
+    }
+  }
+  return <>
+    <blockquote><a className="weread-journal-passage-link" href={href} onClick={follow} title="在微信读书打开这条划线的原文">{note.text}</a></blockquote>
+    <a className="weread-journal-original-link" href={href} onClick={follow} aria-busy={loading}>{loading ? '正在定位原文…' : ready?.precise === false ? '打开书籍 ↗' : '回到原文 ↗'}</a>
+    {ready?.precise === false ? <p className="weread-journal-caption">这条划线缺少位置信息，暂时只能打开书籍。</p> : null}
+    {error ? <p className="weread-journal-warning" role="alert">{error}，点击链接可重试。</p> : null}
+  </>
+}
+
 function Quote({ notes, today, complete, onOpenBook, preferToday = false }: { notes: readonly JournalNote[]; today: Date; complete: boolean; onOpenBook: JournalProps['onOpenBook']; preferToday?: boolean }): ReactNode {
   const key = dayKey(today)
   const [choice, setChoice] = useState<{ day: string; quote: JournalNote | undefined }>(() => ({ day: key, quote: undefined }))
   const highlights = useMemo(() => notes.filter((note) => note.kind === 'highlight' && dayKey(new Date(note.createTime)) <= key && note.text.trim()).slice().sort((a, b) => noteKey(a).localeCompare(noteKey(b))), [notes, key])
   const todayHighlights = useMemo(() => preferToday ? highlights.filter((note) => dayKey(new Date(note.createTime)) === key) : [], [highlights, key, preferToday])
   const candidates = todayHighlights.length > 0 ? todayHighlights : highlights.filter((note) => dayKey(new Date(note.createTime)) < key)
-  const seed = [...key].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 0)
-  const quote = selectJournalQuote(choice.day === key ? choice.quote : undefined, candidates, seed)
+  const [opening] = useState(() => ({ book: Math.random(), quote: Math.random() }))
+  const seed = Math.floor(opening.quote * 0x100000000)
+  const quote = (choice.day === key ? choice.quote : undefined) ?? selectRandomJournalQuote(candidates, opening.book, opening.quote)
   // Batch arrivals expand the candidates, but never replace text being read.
   useEffect(() => {
     if (choice.day !== key || choice.quote !== quote) setChoice({ day: key, quote })
@@ -147,7 +186,7 @@ function Quote({ notes, today, complete, onOpenBook, preferToday = false }: { no
       <button type="button" className="weread-journal-button" title="换一句当前书里的划线" disabled={!sameBookHighlights.some((note) => note.id !== quote?.id)} onClick={() => setChoice({ day: key, quote: selectJournalQuote(quote, sameBookHighlights, seed, true) })}>换一句</button>
       <button type="button" className="weread-journal-button" title={canChangeBook ? '从已缓存的划线中换一本不同的书' : '当前没有其他书的划线'} disabled={!canChangeBook} onClick={() => setChoice({ day: key, quote: selectJournalBookQuote(quote, highlights, seed) })}>换一本</button>
     </div></div>
-    {quote ? <><JournalBookSource note={quote} onOpenBook={onOpenBook}><blockquote>{quote.text}</blockquote><p className="weread-journal-caption">你在 {new Date(quote.createTime).toLocaleDateString('zh-CN')} 留下的划线{complete ? '' : ' · 从已加载笔记中选取'}</p></JournalBookSource></> : <p className="weread-journal-empty">{complete ? '还没有往日划线。下一次遇到心动的句子，留给未来的自己。' : '已加载笔记中暂无往日划线，笔记加载完成后再来看看。'}</p>}
+    {quote ? <><JournalBookSource note={quote} onOpenBook={onOpenBook}><QuotePassage key={quote.id} note={quote} /><p className="weread-journal-caption">你在 {new Date(quote.createTime).toLocaleDateString('zh-CN')} 留下的划线{complete ? '' : ' · 从已加载笔记中选取'}</p></JournalBookSource></> : <p className="weread-journal-empty">{complete ? '还没有往日划线。下一次遇到心动的句子，留给未来的自己。' : '已加载笔记中暂无往日划线，笔记加载完成后再来看看。'}</p>}
   </section>
 }
 
@@ -178,7 +217,7 @@ export function Today({ onOpenBook, refreshKey }: JournalProps): ReactNode {
         <button type="button" className="weread-journal-book-main" onClick={() => onOpenBook(book.bookId)}>{book.cover ? <img src={book.cover} alt="" loading="lazy" /> : <span className="weread-journal-cover">书</span>}<span><strong>{book.title}</strong><small>{book.author || '未知作者'}</small><small>查看书籍与笔记 →</small></span></button><a href={`weread://reading?bId=${encodeURIComponent(book.bookId)}`} aria-label={`在微信读书继续阅读${book.title}`}>继续阅读 ↗</a>
       </article>)}</div>}
     </section>
-    <Quote notes={journal.notes} today={today} complete={journal.complete} onOpenBook={onOpenBook} preferToday />
+    <Quote key={resourceKey} notes={journal.notes} today={today} complete={journal.complete} onOpenBook={onOpenBook} preferToday />
     <section className="weread-journal-section"><div className="weread-journal-section-head"><h2>今天留下的痕迹</h2><span className="weread-journal-caption">个人划线与想法</span></div><Coverage journal={journal} /><NoteList notes={notes} onOpenBook={onOpenBook} empty={journal.complete ? '今天还没有笔记。好句子和新想法，随时值得记下来。' : '已加载范围内暂无今日笔记；当前笔记尚未完整。'} /></section>
   </div>
 }
